@@ -1,0 +1,174 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #080808;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #camera-view {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #080808;
+      filter: blur(0);
+      transition: filter 120ms ease-out;
+      will-change: filter;
+    }
+
+    #camera-view.blurred {
+      filter: blur(18px);
+    }
+
+    #camera-input {
+      display: none;
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"
+          crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+          crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <video id="camera-input" playsinline></video>
+  <canvas id="camera-view"></canvas>
+
+  <script>
+    const video = document.getElementById("camera-input");
+    const canvas = document.getElementById("camera-view");
+    const ctx = canvas.getContext("2d", {
+      alpha: false
+    });
+
+    let isBlurred = false;
+
+    // Mendeteksi apakah jari terangkat atau terlipat.
+    function isFingerUp(landmarks, tip, pip, mcp) {
+      return (
+        landmarks[tip].y < landmarks[pip].y &&
+        landmarks[pip].y < landmarks[mcp].y
+      );
+    }
+
+    function isFingerFolded(landmarks, tip, pip) {
+      return landmarks[tip].y > landmarks[pip].y;
+    }
+
+    // Deteksi gestur peace sign / dua jari.
+    function isPeaceSign(landmarks) {
+      const indexUp = isFingerUp(landmarks, 8, 6, 5);
+      const middleUp = isFingerUp(landmarks, 12, 10, 9);
+
+      const ringFolded = isFingerFolded(landmarks, 16, 14);
+      const pinkyFolded = isFingerFolded(landmarks, 20, 18);
+
+      return (
+        indexUp &&
+        middleUp &&
+        ringFolded &&
+        pinkyFolded
+      );
+    }
+
+    function setBlur(enabled) {
+      if (isBlurred === enabled) return;
+
+      isBlurred = enabled;
+      canvas.classList.toggle("blurred", enabled);
+    }
+
+    // Menggambar hasil kamera dan memperbarui efek blur.
+    function onResults(results) {
+      const image = results.image;
+
+      if (
+        canvas.width !== image.videoWidth &&
+        image.videoWidth
+      ) {
+        canvas.width = image.videoWidth;
+      }
+
+      if (
+        canvas.height !== image.videoHeight &&
+        image.videoHeight
+      ) {
+        canvas.height = image.videoHeight;
+      }
+
+      // Menggambar video tanpa overlay atau teks.
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      const handsDetected =
+        results.multiHandLandmarks &&
+        results.multiHandLandmarks.length > 0;
+
+      let peaceDetected = false;
+
+      if (handsDetected) {
+        for (const landmarks of results.multiHandLandmarks) {
+          if (isPeaceSign(landmarks)) {
+            peaceDetected = true;
+            break;
+          }
+        }
+      }
+
+      setBlur(peaceDetected);
+    }
+
+    // Inisialisasi MediaPipe Hands.
+    const hands = new Hands({
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.65,
+      minTrackingConfidence: 0.6
+    });
+
+    hands.onResults(onResults);
+
+    // Menjalankan webcam secara real-time.
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 1280,
+      height: 720
+    });
+
+    camera.start().catch(() => {
+      // Tidak menampilkan pesan apa pun pada layar.
+    });
+  </script>
+</body>
+</html>
+```
